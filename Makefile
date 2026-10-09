@@ -20,3 +20,10 @@ fmt:
 # machine it runs on. Nothing here sleeps for time to pass.
 flaky:
 	go test -race -count=3 ./match/
+
+# The run CI does, on the toolchain go.mod asks for rather than the one on your PATH: CI installs that
+# version, and a test that only passes on a newer one is not evidence. It is how the race in
+# TestRunReturnsWhenTheMatchIsOver was found - Go 1.27 on this machine had been hiding it.
+GO_MINOR := $(shell sed -n 's/^go \([0-9]*\.[0-9]*\).*/\1/p' go.mod)
+test-ci:
+	GOTOOLCHAIN=go$(GO_MINOR).0 go test -race -count=1 -timeout 120s ./...

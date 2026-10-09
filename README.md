@@ -135,6 +135,14 @@ OnSlowTick: func(tick uint64, took time.Duration) { slow = append(slow, tick) },
 - **The fake hands out copies.** A store that returns its own slice lets a caller change what is
   stored without writing, and every test after that one is checking a value that was never
   persisted. There is a test that writes to the slice it was given and reads the object back.
+- **A test that cancels a loop right after `AdvanceByTicks` is a race in the test.**
+  `AdvanceByTicks` promises the ticks were *fired*, not that the loop has *counted* them: the last one
+  may still be in the buffer. `TestRunReturnsWhenTheMatchIsOver` did exactly that and failed on one Go
+  version and not another, which is how it was found - the doc comment on `AdvanceByTicks` now says so,
+  because the next person to write that test deserves to know before the CI run.
+- **The toolchain in `go.mod` is the one CI installs**, so a suite that is green on a newer one on your
+  machine is not evidence: the test above passed on Go 1.27 and failed on Go 1.24.0. `make test-ci`
+  runs the suite the way CI does, which is how the failure was reproduced locally at all.
 - **The fake clock had a race of its own** - it read the current instant without the lock while
   handing a tick over - and `-race` found it the moment the test suite grew. A test kit is code that
   people trust; it gets tested here like anything else.

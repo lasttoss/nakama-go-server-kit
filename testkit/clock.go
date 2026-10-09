@@ -80,6 +80,12 @@ func (c *FakeClock) Advance(d time.Duration) {
 // before firing the next so that none of them is dropped, then returns. It reads better in a test
 // that thinks in ticks than in milliseconds, and a test that asserts "after three ticks" wants
 // three ticks.
+//
+// It promises the ticks were fired, not that the loop has counted them: the last one may still be in
+// the buffer when this returns, waiting for the goroutine that takes it. A test that cancels a loop's
+// context immediately afterwards will therefore sometimes stop the loop with that tick unprocessed -
+// a race in the test, not in the loop. Wait for the effect you are about to assert on, whether that is
+// the loop's own tick count or a channel the effect arrived on, before you end the match.
 func (c *FakeClock) AdvanceByTicks(n int) {
 	c.mu.Lock()
 	if len(c.tickers) == 0 {

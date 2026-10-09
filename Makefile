@@ -27,3 +27,8 @@ flaky:
 GO_MINOR := $(shell sed -n 's/^go \([0-9]*\.[0-9]*\).*/\1/p' go.mod)
 test-ci:
 	GOTOOLCHAIN=go$(GO_MINOR).0 go test -race -count=1 -timeout 120s ./...
+
+# Sources are HTML and Mermaid; a PNG is a build artifact.
+diagram:
+	@if command -v chromium >/dev/null 2>&1; then B=chromium; elif command -v google-chrome >/dev/null 2>&1; then B=google-chrome; else echo "no chromium on PATH: open docs/diagrams/*.html in a browser"; exit 0; fi; \
+	for f in docs/diagrams/*.html; do $$B --headless --screenshot="$${f%.html}.png" --window-size=1200,1000 "$$f" && echo "wrote $${f%.html}.png"; done

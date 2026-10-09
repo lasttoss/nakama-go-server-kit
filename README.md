@@ -163,3 +163,18 @@ screenshot of an idempotent reward being claimed twice.
 ## License
 
 MIT. See `LICENSE`, and `PROVENANCE.md` for where this code comes from.
+
+## The boundaries as a picture
+
+`docs/diagrams/package-boundaries.html` draws the claim the package table makes: the four packages know
+nothing about the game server runtime, so the adapters live in the server that uses the kit, and the fakes
+in `testkit` implement the same interfaces the runtime does. The picture also marks the two places where the
+code does something a reader would otherwise take for a bug — the id ledger kept inside the same object as
+the state, and the error from `change` that is deliberately not retried.
+
+`docs/diagrams/package-boundaries.mmd` is the same picture as Mermaid. Sources are HTML and Mermaid, not
+PNG, because a source can be reviewed and diffed:
+
+```bash
+make diagram   # exports PNGs using a local chromium, if there is one
+```

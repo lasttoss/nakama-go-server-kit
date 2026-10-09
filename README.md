@@ -1,7 +1,7 @@
 # nakama-go-server-kit
 
-A fixed-tick match loop for game servers written in Go - and the test kit that makes it checkable
-without a running server.
+A fixed-tick match loop and versioned writes for game servers written in Go - and the test kit that
+makes both checkable without a running server.
 
 ```go
 loop, err := match.Start(ctx, match.Options{
@@ -25,10 +25,10 @@ clk.AdvanceByTicks(3)                       // three ticks, right now
 if loop.Snapshot().Ticks != 3 { ... }
 ```
 
-**95.0% statement coverage, 21 tests, 1140 lines of Go, one second with the race detector**
+**92.5% statement coverage, 32 tests, 1717 lines of Go, one second with the race detector**
 (`go test -race ./...`). No dependencies: `go.mod` has no `require` lines at all.
 
-## The three problems this is here to solve
+## The four problems this is here to solve
 
 **A tick that runs long is a stutter, and nobody knows which handler did it.** `Loop` measures every
 tick against its budget, counts the ones that overran, keeps a p95 over the recent ticks, and calls
@@ -43,14 +43,32 @@ really happened instead of sleeping and hoping.
 from one player should cost that room a tick, not every room on the process. The recovery lives in
 the loop, and there is a test that panics in a tick and then checks the loop is still running.
 
+**Two requests save the same player at once and one of them is lost.** Reading a player's gold,
+adding a reward and writing the total back is how a player gets paid twice, or not at all.
+`storage.Update` writes the object back only if nobody else replaced it in between, and the loser
+applies its change to the winner's value instead of overwriting it.
+
+```go
+updated, err := storage.Update(ctx, store, "players/p1/wallet",
+    func(current []byte, exists bool) ([]byte, error) {
+        wallet := walletOf(current, exists)
+        if wallet.Gold < price {
+            return nil, ErrNotEnoughGold // a decision, not a race: not retried
+        }
+        wallet.Gold -= price
+        return wallet.Bytes(), nil // the check and the charge land in one write, or neither does
+    })
+```
+
 ## What is in the box
 
 | Package | What it does |
 |---|---|
 | `match` | `Start` / `Run`, a fixed-rate tick with a measured budget, overrun counting, `Percentile`, a `Stats` any goroutine can read, and a panic that stays in its tick |
-| `testkit` | `FakeClock` (`Advance`, `AdvanceByTicks`, `Jump`, `Tickers`) and `WaitFor`, so a test can move time and observe the result |
+| `storage` | `Store` (read, and write only with the version that was read), `Update` with a bounded, jittered retry, and `ReadTo` for the "this player has never played" case |
+| `testkit` | `FakeClock` (`Advance`, `AdvanceByTicks`, `Jump`, `Tickers`), `WaitFor`, a log recorder, and `MemStore` - a fake store that can be told to refuse the next few writes |
 
-Two packages and no dependencies at all: `go.mod` has no `require`, and the module graph is empty.
+Three packages and no dependencies at all: `go.mod` has no `require`, and the module graph is empty.
 That is deliberate - this is the part of a game server that should be inspectable in one sitting.
 
 ## The clock, and the two ways to move it
@@ -82,6 +100,11 @@ OnSlowTick: func(tick uint64, took time.Duration) { slow = append(slow, tick) },
 - **`Stats` is readable while the loop runs**, under a mutex held only for the assignments: a handler
   that calls `Snapshot` from inside `OnTick`, and a dashboard in another goroutine, both have to
   work. `go test -race` is what proves it.
+- **A refused write is not counted as a write.** The retry loop is tested with a store that refuses
+  the first two writes: the change is applied three times and the store accepts exactly one.
+- **The fake hands out copies.** A store that returns its own slice lets a caller change what is
+  stored without writing, and every test after that one is checking a value that was never
+  persisted. There is a test that writes to the slice it was given and reads the object back.
 - **The fake clock had a race of its own** - it read the current instant without the lock while
   handing a tick over - and `-race` found it the moment the test suite grew. A test kit is code that
   people trust; it gets tested here like anything else.
@@ -93,9 +116,9 @@ Not a matchmaking service, not a game framework, and not a Nakama dependency: it
 authoritative match, a room in a Zinx server, or a bot harness - and it can be tested without any of
 them.
 
-Next: the same treatment for the two other places a Nakama module gets awkward - storage writes that
-have to survive two players editing the same object at once, and RPC handlers that must validate
-their input - both against in-memory fakes in `testkit`.
+Next: the same treatment for the other place a Nakama module gets awkward - RPC handlers that have to
+validate their input before it reaches the database, so that a bad request is a `400` and not a
+`500` from the storage engine - against the same fakes in `testkit`.
 
 ## License
 

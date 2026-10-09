@@ -25,7 +25,7 @@ clk.AdvanceByTicks(3)                       // three ticks, right now
 if loop.Snapshot().Ticks != 3 { ... }
 ```
 
-**95.2% statement coverage, 47 tests, 2257 lines of Go, one second with the race detector**
+**95.1% statement coverage, 55 tests, 2654 lines of Go, one second with the race detector**
 (`go test -race ./...`). No dependencies: `go.mod` has no `require` lines at all.
 
 ## The five problems this is here to solve
@@ -52,7 +52,10 @@ one `internal` error and puts the detail in the log.
 **Two requests save the same player at once and one of them is lost.** Reading a player's gold,
 adding a reward and writing the total back is how a player gets paid twice, or not at all.
 `storage.Update` writes the object back only if nobody else replaced it in between, and the loser
-applies its change to the winner's value instead of overwriting it.
+applies its change to the winner's value instead of overwriting it. A request that is *retried* is
+the same problem from the other side - the client that lost its connection, the queue that delivered
+the message twice, the second tap on a laggy phone - and `storage.Once` answers it by keeping the
+record of what has been applied in the same object as the state it changed.
 
 ```go
 updated, err := storage.Update(ctx, store, "players/p1/wallet",
@@ -71,12 +74,32 @@ updated, err := storage.Update(ctx, store, "players/p1/wallet",
 | Package | What it does |
 |---|---|
 | `match` | `Start` / `Run`, a fixed-rate tick with a measured budget, overrun counting, `Percentile`, a `Stats` any goroutine can read, and a panic that stays in its tick |
-| `storage` | `Store` (read, and write only with the version that was read), `Update` with a bounded, jittered retry, and `ReadTo` for the "this player has never played" case |
+| `storage` | `Store` (read, and write only with the version that was read), `Update` with a bounded, jittered retry, `Once` for rewards that must be granted exactly once per request id, and `ReadTo` for the "this player has never played" case |
 | `rpc` | a `Registry` of handlers by name, `Decode` that refuses a field the handler does not know, one `internal` answer for anything the client should not see, and a panic that costs one request |
 | `testkit` | `FakeClock` (`Advance`, `AdvanceByTicks`, `Jump`, `Tickers`), `WaitFor`, a log recorder, and `MemStore` - a fake store that can be told to refuse the next few writes |
 
 Four packages and no dependencies at all: `go.mod` has no `require`, and the module graph is empty.
 That is deliberate - this is the part of a game server that should be inspectable in one sitting.
+
+## A reward that is granted once, whatever the client retries
+
+```go
+once := storage.NewOnce(store, "players/p1/rewards")
+grant, err := once.Do(ctx, requestID, func(state []byte, exists bool) ([]byte, error) {
+    return addGold(state, 100), nil // runs only if this request id has not been applied
+})
+// on a retry: grant.Applied == false, grant.State is the state the first call left,
+// and nothing was written a second time
+```
+
+The ledger of request ids and the state they changed are one stored object, so the check and the
+effect land in a single compare-and-swap. Checking an id in one table and granting in another is a
+race that passes every test until the day the two requests arrive together - `Once` has a test with
+two goroutines holding the same request id, and one of them has to be told it is the second.
+
+The list of ids is bounded (`storage.Keep`, 128 by default), because remembering every reward a game
+has ever granted is a leak that shows up a year later. An id that has been forgotten can be granted
+again, which is a decision worth making on purpose; there is a test that states it.
 
 ## The clock, and the two ways to move it
 
@@ -123,10 +146,11 @@ Not a matchmaking service, not a game framework, and not a Nakama dependency: it
 authoritative match, a room in a Zinx server, or a bot harness - and it can be tested without any of
 them.
 
-Next, on the way to a Nakama module that does all of this: rewards that are granted exactly once
-whatever the client retries (a request id recorded in the same write as the effect, on top of
-`storage`), an inventory and shop transaction that cannot go negative, and a clan search that is one
-SQL statement rather than a loop over clans - with the `EXPLAIN` before and after.
+Next, on the way to a Nakama module that does all of this: an inventory and shop transaction that
+cannot go negative and cannot sell the same sword twice, a leaderboard, and a clan search that is one
+SQL statement rather than a loop over clans - with the `EXPLAIN` before and after. Then the demo:
+`docker compose up` with Nakama, Postgres and the console, a thousand seeded players, and one
+screenshot of an idempotent reward being claimed twice.
 
 ## License
 

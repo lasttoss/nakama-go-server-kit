@@ -93,7 +93,7 @@ func options(opts []Option) Options {
 // applies its change to the winner's value instead.
 //
 // An error from change stops the loop and is returned unchanged: a purchase that cannot be afforded
-// is not a race to retry. A refused write is retried, with a short jittered wait, because two clients
+// is not a race to retry. Returning ErrNoChange means the change decided there was nothing to write. A refused write is retried, with a short jittered wait, because two clients
 // retrying in lockstep would keep colliding.
 //
 // The returned object carries the value that was finally written, and the version that identifies it.
@@ -117,7 +117,13 @@ func Update(ctx context.Context, store Store, key string, change Apply, opts ...
 		}
 
 		value, err := change(current.Value, exists)
-		if err != nil {
+		switch {
+		case err == nil:
+		case errors.Is(err, ErrNoChange):
+			// Nothing to write, and saying so is not a failure: the caller gets what is stored, and
+			// the object keeps its version.
+			return current, nil
+		default:
 			return Object{}, err
 		}
 

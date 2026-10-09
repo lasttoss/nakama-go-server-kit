@@ -166,6 +166,32 @@ MIT. See `LICENSE`, and `PROVENANCE.md` for where this code comes from.
 
 ## The boundaries as a picture
 
+```mermaid
+%% Source for docs/diagrams/package-boundaries.html
+%% The claim: four packages that know nothing about the Nakama runtime, so every test is a plain `go test -race`.
+flowchart LR
+  subgraph NK["Nakama runtime (outside: go.mod has no require)"]
+    M["InitModule<br/>NakamaModule"]
+    SE[("storage engine")]
+    MATCH["match handler"]
+  end
+  subgraph KIT["nakama-go-server-kit · 0 dependencies"]
+    RP["rpc<br/>Registry · Decode · Error"]
+    ST["storage<br/>Store = Read + Write(version)"]
+    MA["match<br/>Start/Run · Clock · NearestRank"]
+    TK["testkit<br/>FakeClock · MemStore · LogRecorder"]
+  end
+  M -->|"adapter"| RP
+  M -->|"adapter"| ST
+  MATCH -->|"adapter"| MA
+  TK -.->|"fakes implement the same interfaces"| ST
+  TK -.-> MA
+  ST -.->|"CAS: version in, version out"| SE
+  classDef kit fill:#eef5ef,stroke:#1a6b3c;
+  class RP,ST,MA,TK kit;
+```
+
+
 `docs/diagrams/package-boundaries.html` draws the claim the package table makes: the four packages know
 nothing about the game server runtime, so the adapters live in the server that uses the kit, and the fakes
 in `testkit` implement the same interfaces the runtime does. The picture also marks the two places where the

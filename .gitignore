@@ -1,0 +1,4 @@
+coverage.out
+*.test
+*.out
+.DS_Store

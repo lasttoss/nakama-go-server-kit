@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Formatting
+        run: |
+          test -z "$(gofmt -l .)" || { echo "these files are not gofmt'd:"; gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go build ./...
+      - name: Tests, with the race detector
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+      - name: Coverage
+        run: go tool cover -func=coverage.out | tail -1 | tee /tmp/cov.txt
+      - name: Coverage floor
+        # A library whose only job is to be testable had better be tested. The floor is a little below
+        # where this sits so that a small refactor does not fail the build, and high enough that
+        # deleting a test file does.
+        run: |
+          percent=$(awk 'END {gsub("%", "", $3); print $3}' /tmp/cov.txt)
+          echo "coverage is ${percent}%"
+          awk -v p="$percent" 'BEGIN { if (p+0 < 85) { print "coverage below 85%"; exit 1 } }'
+      - name: The tests must not depend on a fast machine
+        # Three runs of the tick loop: it is the package where a test that measures the wall clock
+        # would be flaky, and where the fake clock earns its place.
+        run: go test -race -count=3 ./match/

@@ -224,3 +224,76 @@ func (s *brokenStore) Read(context.Context, string) (storage.Object, error) {
 func (s *brokenStore) Write(context.Context, string, []byte, string) (storage.Object, error) {
 	return storage.Object{}, s.err
 }
+
+// The wait between attempts is real code and gets a real test: the default sleeper has to give up the
+// moment the request it is retrying for is over, or a client that closed the connection keeps a
+// goroutine of the server waiting.
+func TestTheWaitBetweenAttemptsHonoursTheRequest(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	store := &writeFailsStore{read: testkit.NewStore(), err: storage.ErrVersionConflict, onWrite: cancel}
+
+	started := time.Now()
+	_, err := storage.Update(ctx, store, "players/p1/save", func([]byte, bool) ([]byte, error) {
+		return []byte("value"), nil
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Errorf("the retry loop waited %v after the request was over", elapsed)
+	}
+}
+
+func TestUpdateGivesUpOnAWriteThatFailedForAnotherReason(t *testing.T) {
+	gone := errors.New("the database is gone")
+	store := &writeFailsStore{read: testkit.NewStore(), err: gone}
+
+	_, err := storage.Update(context.Background(), store, "players/p1/save", func([]byte, bool) ([]byte, error) {
+		return []byte("value"), nil
+	}, noSleep)
+	if !errors.Is(err, gone) {
+		t.Fatalf("err = %v, want the store's error", err)
+	}
+	if errors.Is(err, storage.ErrVersionConflict) {
+		t.Error("a broken database was reported as a race, which would send the caller into a retry loop")
+	}
+}
+
+func TestUpdateRefusesToRunWithoutAnAttempt(t *testing.T) {
+	store := testkit.NewStore().ConflictOnWrite(1)
+	calls := 0
+
+	_, err := storage.Update(context.Background(), store, "players/p1/save", func([]byte, bool) ([]byte, error) {
+		calls++
+		return []byte("value"), nil
+	}, noSleep, storage.Attempts(0))
+	if !errors.Is(err, storage.ErrVersionConflict) {
+		t.Fatalf("err = %v, want a conflict", err)
+	}
+	if calls != 1 {
+		t.Errorf("the change was applied %d times, want 1: Attempts(0) still means one try", calls)
+	}
+}
+
+// writeFailsStore reads from a real store and refuses every write, which is how a test tells a race
+// apart from a database that is down.
+type writeFailsStore struct {
+	read    *testkit.MemStore
+	err     error
+	onWrite func()
+}
+
+func (s *writeFailsStore) Read(ctx context.Context, key string) (storage.Object, error) {
+	return s.read.Read(ctx, key)
+}
+
+func (s *writeFailsStore) Write(context.Context, string, []byte, string) (storage.Object, error) {
+	if s.onWrite != nil {
+		s.onWrite()
+	}
+	if errors.Is(s.err, storage.ErrVersionConflict) {
+		return storage.Object{}, storage.ErrVersionConflict
+	}
+	return storage.Object{}, s.err
+}

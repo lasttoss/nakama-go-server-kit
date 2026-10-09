@@ -25,7 +25,7 @@ clk.AdvanceByTicks(3)                       // three ticks, right now
 if loop.Snapshot().Ticks != 3 { ... }
 ```
 
-**92.5% statement coverage, 32 tests, 1717 lines of Go, one second with the race detector**
+**95.0% statement coverage, 35 tests, 1790 lines of Go, one second with the race detector**
 (`go test -race ./...`). No dependencies: `go.mod` has no `require` lines at all.
 
 ## The four problems this is here to solve

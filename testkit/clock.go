@@ -90,9 +90,12 @@ func (c *FakeClock) AdvanceByTicks(n int) {
 	c.mu.Unlock()
 
 	for i := 0; i < n; i++ {
-		// The loop has taken the previous tick once the buffer is empty again. A test that drives a
-		// clock nobody is listening to gets its ticks anyway after a moment, rather than hanging.
-		for deadline := time.Now().Add(2 * time.Second); len(ticker.ch) > 0 && time.Now().Before(deadline); {
+		// The loop has taken the previous tick once the buffer is empty again. The wait is generous on
+		// purpose: on a loaded machine the goroutine taking the tick may not be scheduled for a while,
+		// and a short deadline would turn that into a dropped tick and a failed test rather than a slow
+		// one. A test that drives a clock nobody is listening to gets its ticks anyway when the wait is
+		// over, rather than hanging.
+		for deadline := time.Now().Add(10 * time.Second); len(ticker.ch) > 0 && time.Now().Before(deadline); {
 			time.Sleep(50 * time.Microsecond)
 		}
 		c.fire(c.Now().Add(interval), true)

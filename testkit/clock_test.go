@@ -67,7 +67,7 @@ func TestAdvanceByTicksDeliversEveryTick(t *testing.T) {
 	}()
 
 	clk.AdvanceByTicks(5)
-	if !testkit.WaitFor(time.Second, func() bool {
+	if !testkit.WaitFor(15*time.Second, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return len(times) == 5
@@ -128,11 +128,11 @@ func TestAStoppedTickerStops(t *testing.T) {
 
 // WaitFor is the alternative to a sleep that is either too short (flaky) or too long (slow).
 func TestWaitForGivesUpAndSaysSo(t *testing.T) {
-	if testkit.WaitFor(20*time.Millisecond, func() bool { return false }) {
+	if testkit.WaitFor(50*time.Millisecond, func() bool { return false }) {
 		t.Fatal("WaitFor reported success for a condition that never held")
 	}
 	started := time.Now()
-	if !testkit.WaitFor(time.Second, func() bool { return true }) {
+	if !testkit.WaitFor(15*time.Second, func() bool { return true }) {
 		t.Fatal("WaitFor reported failure for a condition that held")
 	}
 	if elapsed := time.Since(started); elapsed > 100*time.Millisecond {

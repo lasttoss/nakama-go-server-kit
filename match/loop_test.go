@@ -14,11 +14,17 @@ import (
 const rate = 30
 const interval = time.Second / rate
 
+// patience is how long a test waits for something that should happen in microseconds. It is a deadlock
+// detector, not a performance assertion: a runner with two shared cores and four packages under -race
+// is slower than a laptop, and a test that fails there is telling the wrong story. What the loop does
+// is asserted by the ticks themselves, which the fake clock makes exact.
+const patience = 15 * time.Second
+
 // waitFor fails the test if the loop has not done what the test expects by the time the deadline
 // runs out. It is the only place in this file that touches the wall clock.
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	if !testkit.WaitFor(2*time.Second, cond) {
+	if !testkit.WaitFor(patience, cond) {
 		t.Fatalf("timed out waiting for %s", what)
 	}
 }
@@ -102,7 +108,7 @@ func TestASlowTickIsCountedAndReported(t *testing.T) {
 		if got.took < 30*time.Millisecond {
 			t.Errorf("reported %v, want the 30ms the handler took", got.took)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(patience):
 		t.Fatal("OnSlowTick was never called")
 	}
 	stats := loop.Snapshot()
@@ -166,7 +172,7 @@ func TestTheLoopStopsWhenTheMatchIsOver(t *testing.T) {
 		if stats.StoppedAt.Before(stats.StartedAt) {
 			t.Errorf("stopped before it started: %v then %v", stats.StartedAt, stats.StoppedAt)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(patience):
 		t.Fatal("Wait never returned after the context was cancelled")
 	}
 }
@@ -291,9 +297,15 @@ func TestRunReturnsWhenTheMatchIsOver(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	registered := make(chan bool, 1)
 	go func() {
 		// Run starts the loop, which registers the ticker, so wait for it before driving the clock.
-		testkit.WaitFor(time.Second, func() bool { return len(clk.Tickers()) > 0 })
+		if !testkit.WaitFor(patience, func() bool { return len(clk.Tickers()) > 0 }) {
+			registered <- false
+			cancel()
+			return
+		}
+		registered <- true
 		clk.AdvanceByTicks(2)
 		cancel()
 	}()
@@ -310,11 +322,17 @@ func TestRunReturnsWhenTheMatchIsOver(t *testing.T) {
 	if !errors.Is(stats.StopReason, context.Canceled) {
 		t.Errorf("StopReason = %v, want context.Canceled", stats.StopReason)
 	}
-	if !testkit.WaitFor(time.Second, func() bool { return recorder.Contains("match loop stopped") }) {
+	if !testkit.WaitFor(patience, func() bool { return recorder.Contains("match loop stopped") }) {
 		t.Errorf("the loop did not say it had stopped: %v", recorder.Lines())
 	}
-	if stats.Ticks == 0 {
-		t.Error("no ticks were counted")
+	// The tick count is asserted only when the clock was really driven: a loop that was never given
+	// ticks and one that lost them are different claims, and only the second is a bug.
+	if <-registered {
+		if stats.Ticks != 2 {
+			t.Errorf("ticks = %d, want the 2 that were driven", stats.Ticks)
+		}
+	} else {
+		t.Error("the loop never registered its ticker, so the test could not drive it")
 	}
 }
 

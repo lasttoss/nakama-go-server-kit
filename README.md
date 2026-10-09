@@ -25,10 +25,10 @@ clk.AdvanceByTicks(3)                       // three ticks, right now
 if loop.Snapshot().Ticks != 3 { ... }
 ```
 
-**95.0% statement coverage, 35 tests, 1790 lines of Go, one second with the race detector**
+**95.2% statement coverage, 47 tests, 2257 lines of Go, one second with the race detector**
 (`go test -race ./...`). No dependencies: `go.mod` has no `require` lines at all.
 
-## The four problems this is here to solve
+## The five problems this is here to solve
 
 **A tick that runs long is a stutter, and nobody knows which handler did it.** `Loop` measures every
 tick against its budget, counts the ones that overran, keeps a p95 over the recent ticks, and calls
@@ -42,6 +42,12 @@ really happened instead of sleeping and hoping.
 **A panic in a handler takes the whole server with it.** In a game runtime one unexpected message
 from one player should cost that room a tick, not every room on the process. The recovery lives in
 the loop, and there is a test that panics in a tick and then checks the loop is still running.
+
+**A client's typo becomes a 500 from the storage engine.** A payload with `amout` in it, a field the
+handler does not know, is a client bug that has to be answered as one - and a failure inside the
+server is not described to the client at all, because an error naming a table is how a schema leaks.
+`rpc.Decode` refuses unknown fields and says which one; `rpc.Registry` answers everything else with
+one `internal` error and puts the detail in the log.
 
 **Two requests save the same player at once and one of them is lost.** Reading a player's gold,
 adding a reward and writing the total back is how a player gets paid twice, or not at all.
@@ -66,9 +72,10 @@ updated, err := storage.Update(ctx, store, "players/p1/wallet",
 |---|---|
 | `match` | `Start` / `Run`, a fixed-rate tick with a measured budget, overrun counting, `Percentile`, a `Stats` any goroutine can read, and a panic that stays in its tick |
 | `storage` | `Store` (read, and write only with the version that was read), `Update` with a bounded, jittered retry, and `ReadTo` for the "this player has never played" case |
+| `rpc` | a `Registry` of handlers by name, `Decode` that refuses a field the handler does not know, one `internal` answer for anything the client should not see, and a panic that costs one request |
 | `testkit` | `FakeClock` (`Advance`, `AdvanceByTicks`, `Jump`, `Tickers`), `WaitFor`, a log recorder, and `MemStore` - a fake store that can be told to refuse the next few writes |
 
-Three packages and no dependencies at all: `go.mod` has no `require`, and the module graph is empty.
+Four packages and no dependencies at all: `go.mod` has no `require`, and the module graph is empty.
 That is deliberate - this is the part of a game server that should be inspectable in one sitting.
 
 ## The clock, and the two ways to move it
@@ -116,9 +123,10 @@ Not a matchmaking service, not a game framework, and not a Nakama dependency: it
 authoritative match, a room in a Zinx server, or a bot harness - and it can be tested without any of
 them.
 
-Next: the same treatment for the other place a Nakama module gets awkward - RPC handlers that have to
-validate their input before it reaches the database, so that a bad request is a `400` and not a
-`500` from the storage engine - against the same fakes in `testkit`.
+Next, on the way to a Nakama module that does all of this: rewards that are granted exactly once
+whatever the client retries (a request id recorded in the same write as the effect, on top of
+`storage`), an inventory and shop transaction that cannot go negative, and a clan search that is one
+SQL statement rather than a loop over clans - with the `EXPLAIN` before and after.
 
 ## License
 

@@ -160,46 +160,38 @@ SQL statement rather than a loop over clans - with the `EXPLAIN` before and afte
 `docker compose up` with Nakama, Postgres and the console, a thousand seeded players, and one
 screenshot of an idempotent reward being claimed twice.
 
+## Repository standard
+
+Six items, applied where they mean something rather than everywhere. The exclusions are the point of
+the table: an item that cannot be honest in a repository of this kind is left out and said so.
+
+| Item | Here |
+|---|---|
+| `docker-compose.yml` | not applicable - a library is imported, not deployed |
+| `Dockerfile` | not applicable - same reason: there is no process to run |
+| Helm chart | not applicable - same reason |
+| Diagram | ✓ `docs/figures/package-boundaries.html` plus the exported PNG the README embeds |
+| Tests, run in CI | ✓ Formatting, Tests, with the race detector, Coverage, Coverage floor |
+| CI + `Makefile` | ✓ `.github/workflows/ci.yml` and `Makefile` |
+
 ## License
 
 MIT. See `LICENSE`, and `PROVENANCE.md` for where this code comes from.
 
 ## The boundaries as a picture
 
-```mermaid
-%% Source for docs/diagrams/package-boundaries.html
-%% The claim: four packages that know nothing about the Nakama runtime, so every test is a plain `go test -race`.
-flowchart LR
-  subgraph NK["Nakama runtime (outside: go.mod has no require)"]
-    M["InitModule<br/>NakamaModule"]
-    SE[("storage engine")]
-    MATCH["match handler"]
-  end
-  subgraph KIT["nakama-go-server-kit · 0 dependencies"]
-    RP["rpc<br/>Registry · Decode · Error"]
-    ST["storage<br/>Store = Read + Write(version)"]
-    MA["match<br/>Start/Run · Clock · NearestRank"]
-    TK["testkit<br/>FakeClock · MemStore · LogRecorder"]
-  end
-  M -->|"adapter"| RP
-  M -->|"adapter"| ST
-  MATCH -->|"adapter"| MA
-  TK -.->|"fakes implement the same interfaces"| ST
-  TK -.-> MA
-  ST -.->|"CAS: version in, version out"| SE
-  classDef kit fill:#eef5ef,stroke:#1a6b3c;
-  class RP,ST,MA,TK kit;
-```
+![Four runtime-independent packages behind adapters, with the game server runtime outside the module boundary](docs/figures/package-boundaries.png)
 
+**Figure 1.** Four packages that do not know what Nakama is
 
-`docs/diagrams/package-boundaries.html` draws the claim the package table makes: the four packages know
+`docs/figures/package-boundaries.html` draws the claim the package table makes: the four packages know
 nothing about the game server runtime, so the adapters live in the server that uses the kit, and the fakes
 in `testkit` implement the same interfaces the runtime does. The picture also marks the two places where the
 code does something a reader would otherwise take for a bug — the id ledger kept inside the same object as
 the state, and the error from `change` that is deliberately not retried.
 
-`docs/diagrams/package-boundaries.mmd` is the same picture as Mermaid. Sources are HTML and Mermaid, not
-PNG, because a source can be reviewed and diffed:
+The source is HTML, not a screenshot, because a source can be reviewed and diffed; the PNG above is
+exported from it:
 
 ```bash
 make diagram   # exports PNGs using a local chromium, if there is one

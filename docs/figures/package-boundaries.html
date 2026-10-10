@@ -1,7 +1,8 @@
+<!-- diagram-meta {"topic": "package-boundaries", "level": "component", "type": "architecture", "question": "Four packages that do not know what Nakama is", "sources": ["testkit/*.go", "rpc/*.go", "storage/*.go", "match/*.go"], "updated": "2026-10-09"} -->
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8">
-<title>Four packages that do not know what Nakama is</title>
+
 <style>
   :root { --ink:#151412; --paper:#f7f4ee; --rule:#cfc7b8; --red:#b3261e; --green:#1a6b3c; --amber:#8a5a00; }
   * { box-sizing:border-box; }
@@ -32,9 +33,9 @@
   <div class="meta">measured: 55 tests · 95.1% coverage · <span class="mono">go test -race</span> in ~1s ·
     <span class="mono">go.mod</span> has no require line</div>
 
-  <svg viewBox="0 0 1040 620" role="img" aria-label="Four runtime-independent packages behind adapters, with the game server runtime outside the module boundary">
-    <defs>
-      <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+  <svg viewBox="0 0 1040 620" role="img" aria-label="Four runt<svg viewBox="0 0 1040 620" role="img" aria-labelledby="package-boundaries-title package-boundaries-desc">
+        <title id="package-boundaries-title">Four packages that do not know what Nakama is</title>
+        <desc id="package-boundaries-desc">Four runtime-independent packages behind adapters, with the game server runtime outside the module boundary</desc>" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
         <path d="M0 0 L10 5 L0 10 z" fill="#151412"/></marker>
       <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
         <path d="M0 0 L10 5 L0 10 z" fill="#1a6b3c"/></marker>

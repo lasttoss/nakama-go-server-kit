@@ -176,6 +176,14 @@ the table: an item that cannot be honest in a repository of this kind is left ou
 | Tests, run in CI | ✓ Formatting, Tests, with the race detector, Coverage, Coverage floor |
 | CI + `Makefile` | ✓ `.github/workflows/ci.yml` and `Makefile` |
 
+## Not affiliated with Heroic Labs
+
+Nakama is a trademark of Heroic Labs. This repository is not affiliated with, endorsed by, or
+sponsored by Heroic Labs, and it contains no Nakama Enterprise code, binaries, or licence keys: it is
+a Go library that sits in front of the open-source server, which is published upstream under the
+Apache License 2.0. Nothing here is a substitute for the commercial edition's guarantees - the point
+of `docs/multi-pod.md` is the opposite, to say exactly which guarantees this approach does not have.
+
 ## License
 
 MIT. See `LICENSE`, and `PROVENANCE.md` for where this code comes from.

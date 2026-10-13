@@ -22,6 +22,46 @@ Two rules that make it work: a pod ignores messages whose `from` is itself (othe
 other in a loop), and the book is written by the cheapest hooks that have a `runtime.Presence`
 (`MatchJoin`, plus logout) because a device that never joined a match is otherwise invisible.
 
+## The device rule: one account, a few devices, one live socket
+
+The kick bus moves the *action* across pods. The rule itself is four decisions, and three of them are
+easy to get subtly wrong.
+
+**1. What is stored, and where.** The list of an account's devices belongs to the shared database, so
+it is already correct on every pod - the new device is recorded on the pod that accepted the login.
+Only the *socket* is per-node, which is why the kick has to travel.
+
+**2. Which device goes when the cap is reached.** A cap of N means the login of device N+1 evicts
+exactly one, and "exactly one, the same one on every pod" requires a deterministic order. Ordered by
+`last_login` is the obvious choice and the one that surprises players least, because it evicts the
+machine that has been idle longest; a priority column (`primary`, `secondary`) is the alternative if
+the product wants a device that is never evicted. What is not acceptable is an order that depends on
+which pod handled the write, or an eviction that is not logged - a player whose session ends on a
+third, untouched device has no way to report anything useful.
+
+**3. Who is allowed to ask.** This is the trap in the RPC: the account to kick must come from the
+**authenticated session**, never from the request payload.
+
+| | |
+|---|---|
+| `KickOwnDevices()` takes the user id from the session and kicks that user's other devices | correct: the worst a client can do is log itself out elsewhere |
+| `Kick(uid)` takes a user id from the payload | a griefing tool - any authenticated client can end any other player's session |
+
+The same rule applies to the eviction path: the login that triggers it is the one that authenticated,
+so a client cannot evict on someone else's behalf by asking politely.
+
+**4. Two logins at once.** Two devices authenticating in the same second both read the device list,
+both append, both write: one of the two writes is lost, and the visible result is either two live
+sockets (the rule did not hold) or both devices kicked (the rule fired twice). Write the list back
+only if the version that was read is still current - `storage.Update` in this kit exists for exactly
+this shape - and let the loser re-read and re-apply its change. An account with a race in its device
+list will reproduce this in production and never in a test that logs in one device at a time.
+
+Ordering inside `KickByUID` matters for a smaller reason: disconnect locally **first**, then publish.
+A single-pod deployment with the bus switched off then behaves identically, and the pod that owns the
+socket never waits for the cache to answer a question it can answer itself. The bus is nil-safe for
+the same reason - no cache, no bus, and the server still runs as it did before.
+
 ## Measured on two pods
 
 | players | errors | CPU / pod | RAM / pod | cache connections / pod | p50 auth / join |
@@ -66,3 +106,7 @@ the socket on the other pod closed in **under a second**, immediately after the 
 - [ ] Session book written from `runtime.Presence` on `MatchJoin`, cleared when the session leaves.
 - [ ] Bus is nil-safe (a nil bus behaves exactly like a single pod) and its logger survives panics.
 - [ ] Tests: unit (de-dup, payload parsing, nil-safety), bus-against-a-real-cache, and a two-pod end-to-end that **measures the kick latency**.
+- [ ] The device list is written with a version check (`storage.Update`-style), not read-modify-write.
+- [ ] The eviction order is deterministic and every eviction is logged with the device it removed.
+- [ ] The kick RPC takes the user id from the session; a payload-supplied user id is unreachable.
+- [ ] A test logs in two devices at once and asserts exactly one socket survives.

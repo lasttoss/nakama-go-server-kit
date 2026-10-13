@@ -1,5 +1,7 @@
 # nakama-go-server-kit
 
+Running more than one pod is the part Nakama OSS leaves to you: what is per-node, the two channels that fix it, a runbook, and the measurements — [`docs/multi-pod.md`](docs/multi-pod.md).
+
 A fixed-tick match loop and versioned writes for game servers written in Go - and the test kit that
 makes both checkable without a running server.
 

@@ -32,6 +32,11 @@ if loop.Snapshot().Ticks != 3 { ... }
 **95.1% statement coverage, 55 tests, 2684 lines of Go, about a second per package with the race detector**
 (`go test -race ./...`). No dependencies: `go.mod` has no `require` lines at all.
 
+**Where to look first:** [`match/loop.go`](match/loop.go) is the fixed-tick match loop,
+[`match/clock.go`](match/clock.go) the clock it takes its time from, and
+[`testkit/clock.go`](testkit/clock.go) the kit that steps that time by hand.
+[`docs/multi-pod.md`](docs/multi-pod.md) is the runbook for more than one pod.
+
 ## The five problems this is here to solve
 
 **A tick that runs long is a stutter, and nobody knows which handler did it.** `Loop` measures every

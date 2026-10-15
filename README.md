@@ -1,5 +1,7 @@
 # nakama-go-server-kit
 
+[![ci](https://github.com/lasttoss/nakama-go-server-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/lasttoss/nakama-go-server-kit/actions/workflows/ci.yml)
+
 Running more than one pod is the part Nakama OSS leaves to you: what is per-node, the two channels that fix it, a runbook, and the measurements — [`docs/multi-pod.md`](docs/multi-pod.md).
 
 A fixed-tick match loop and versioned writes for game servers written in Go - and the test kit that
